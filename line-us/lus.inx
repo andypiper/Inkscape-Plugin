@@ -73,12 +73,12 @@
       <hbox>
         <vbox>
           <spacer />
-          <label indent="2">Line-us Inkscape extension</label>
-          <label indent="2">Version 2.0 2023-09-26</label>
+          <label indent="1">Line-us Inkscape extension</label>
+          <label indent="1">Version 2.0 2023-09-26</label>
           <spacer />
-          <label indent="2" appearance="url">https://github.com/andypiper/Line-us-Inkscape</label>
+          <label indent="1" appearance="url">https://github.com/andypiper/Line-us-Inkscape</label>
           <spacer />
-          <label indent="2">(unofficial; not affiliated with the Line-us company)</label>
+          <label indent="1">(unofficial; not affiliated with the Line-us company)</label>
         </vbox>
         <vbox>
           <spacer />

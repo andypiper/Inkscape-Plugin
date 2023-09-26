@@ -7,13 +7,13 @@
 # - removed (some) cruft
 # - pulled in changes from https://github.com/amyszczepanski/Inkscape-Plugin
 #
-# TODO: consistency in var and func names (pylint)
-# TODO: wrap exceptions
+# FIXME: consistency in var and func names (pylint)
 # TODO: docstrings
 # TODO: debug handler
 # TODO: implement tests -> so it can be added to Inkscape Gallery
-# TODO: enable manually configuring Line-us lan address
-# TODO: enable configuring Gcode filename for output
+# TODO: enable manually configuring Line-us network address
+# TODO: enable configuring filename for Gcode output
+# TODO: add param gui-description values
 
 # lus_parser_sender.py
 # Part of the Line-us extension for Inkscape
@@ -42,6 +42,10 @@ import sys
 import socket
 import time
 
+from argparse import ArgumentParser, Namespace
+from math import sqrt
+from lxml import etree
+
 import inkex
 
 from inkex import bezier
@@ -49,10 +53,6 @@ from inkex.elements import Group, PathElement
 from inkex.paths import Path
 from inkex.transforms import Transform
 from inkex.utils import filename_arg
-from argparse import ArgumentParser, Namespace
-from lxml import etree
-from math import sqrt
-
 
 # delay (seconds) for the pen to go up/down before the next move
 N_PEN_DELAY = 0.0
@@ -105,11 +105,10 @@ def parseLengthWithUnits(lwu):
 
     try:
         v = float(s)
-    except:
+    except ValueError as verr:
         return None, None
 
     return v, u
-# -----------------------------------------------------------------------------------------------------
 
 
 def subdivideCubicPath(sp, flat, i=1):
@@ -215,9 +214,10 @@ class LUS(inkex.EffectExtension):
         self.svgTransform = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
         self.warnings = {}
         self.step_scaling_factor = 1
-        self.GF = False  # GF means to Gcode File
-        self.LU = False  # LU means to Line-us
-# -----------------------------------------------------------------------------------------------------
+        self.GF = False  # GF means to G-code File
+        self.LU = False  # LU means send to Line-us
+
+# ----------------------------------------------------------------------------
 
     def effect(self):
         # Main entry
@@ -226,7 +226,7 @@ class LUS(inkex.EffectExtension):
         self.svg = self.document.getroot()
         self.CheckSVGforLUSData()
 
-# ____________	Output to Line-us here   ____________________________________
+# ____________	Output to Line-us  ______________________________
 
         if self.options.tab == 'splash':      # Plot
             self.LU = True
@@ -260,13 +260,7 @@ class LUS(inkex.EffectExtension):
                 inkex.errormsg(gettext.gettext(
                     "Did not find any numbered layers to plot."))
 
-        # elif self.options.tab == '"setup"':    #just fict op to have smth to close below
-            #self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # elif self.options.tab == '"options"'':    #just fict op to have smth to close below
-            #self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-# ____________	Output to G-code file here   ____________________________________
+# ____________	Output to G-code file  __________________
 
         elif self.options.tab == 'gcode':  # G-code
             self.GF = True
@@ -293,6 +287,7 @@ class LUS(inkex.EffectExtension):
         self.GF = False
 
         return
+
 # -----------------------------------------------------------------------------------------------------
 
     def CheckSVGforLUSData(self):
@@ -308,6 +303,7 @@ class LUS(inkex.EffectExtension):
             luslayer.set('lastpathnc', str(0))
             luslayer.set('totaldeltax', str(0))
             luslayer.set('totaldeltay', str(0))
+
 # -----------------------------------------------------------------------------------------------------
 
     def recursiveLUSDataScan(self, aNodeList):
@@ -326,12 +322,13 @@ class LUS(inkex.EffectExtension):
                         self.svgTotalDeltaX = int(node.get('totaldeltax'))
                         self.svgTotalDeltaY = int(node.get('totaldeltay'))
                         self.svgDataRead = True
-                    except:
+                    except ValueError as verr:
                         node.set('lastpath', str(0))
                         node.set('lastpathnc', str(0))
                         node.set('totaldeltax', str(0))
                         node.set('totaldeltay', str(0))
                         self.svgDataRead = True
+
 # -----------------------------------------------------------------------------------------------------
 
     def UpdateSVGLUSData(self, aNodeList):
@@ -347,6 +344,7 @@ class LUS(inkex.EffectExtension):
                     node.set('totaldeltax', str(self.svgTotalDeltaX))
                     node.set('totaldeltay', str(self.svgTotalDeltaY))
                     self.svgDataRead = True
+
 # -----------------------------------------------------------------------------------------------------
 
     def manualCommand(self):
@@ -360,7 +358,6 @@ class LUS(inkex.EffectExtension):
             self.penDown()
 
         elif self.options.manualType == "version_check":
-            # strVersion = self.doRequest( chr(0x18))
             strVersion = self.doRequest()
             inkex.errormsg('Version: ' + strVersion)
 
@@ -378,6 +375,7 @@ class LUS(inkex.EffectExtension):
             self.doCommand(strOutput)
 
         return
+
 # -----------------------------------------------------------------------------------------------------
 
     def plotToLUS(self):
@@ -388,8 +386,8 @@ class LUS(inkex.EffectExtension):
             # Cannot handle the document's dimensions!!!
             inkex.errormsg(gettext.gettext(
                 'The document to be plotted has invalid dimensions. ' +
-                'The dimensions must be unitless or have units of pixels (px) or ' +
-                'percentages (%). Document dimensions may be set in Inkscape with ' +
+                'The dimensions must be unitless, or have units of pixels (px) or ' +
+                'percentages (%). Document dimensions may be set in Inkscape using ' +
                 'File > Document Properties'))
             return
 
@@ -433,6 +431,7 @@ class LUS(inkex.EffectExtension):
         finally:
             # We may have had an exception
             pass  # inkex.errormsg('End drawing')
+
 # -----------------------------------------------------------------------------------------------------
 
     def recursivelyTraverseSvg(self, aNodeList,
@@ -447,9 +446,11 @@ class LUS(inkex.EffectExtension):
                 pass
 
             # first apply the current matrix transform to this node's tranform
-            matNew = matCurrent * \
-                inkex.transforms.Transform(node.get("transform"))
-            # TODO: DeprecationWarning: inkex.deprecated.main.transform_mul -> Use @ operator instead
+            # matNew = matCurrent * \
+            #     inkex.transforms.Transform(node.get("transform"))
+            matNew = matCurrent @ inkex.transforms.Transform(
+                node.get("transform"))
+            # FIXME: DeprecationWarning: inkex.deprecated.main.transform_mul -> Use @ operator instead
 
             # matNew = composeTransform(
             #     matCurrent, parseTransform(node.get("transform")))
@@ -612,7 +613,7 @@ class LUS(inkex.EffectExtension):
                 # Issue 29: pre 2.5.? versions of Python do not have
                 #    "statement-1 if expression-1 else statement-2"
                 # which came out of PEP 308, Conditional Expressions
-                #d = "".join( ["M " + pa[i] if i == 0 else " L " + pa[i] for i in range( 0, len( pa ) )] )
+                # d = "".join( ["M " + pa[i] if i == 0 else " L " + pa[i] for i in range( 0, len( pa ) )] )
                 d = "M " + pa[0]
                 for i in range(1, len(pa)):
                     d += " L " + pa[i]
@@ -654,7 +655,7 @@ class LUS(inkex.EffectExtension):
                 # Issue 29: pre 2.5.? versions of Python do not have
                 #    "statement-1 if expression-1 else statement-2"
                 # which came out of PEP 308, Conditional Expressions
-                #d = "".join( ["M " + pa[i] if i == 0 else " L " + pa[i] for i in range( 0, len( pa ) )] )
+                # d = "".join( ["M " + pa[i] if i == 0 else " L " + pa[i] for i in range( 0, len( pa ) )] )
                 d = "M " + pa[0]
                 for i in range(1, len(pa)):
                     d += " L " + pa[i]
@@ -786,6 +787,7 @@ class LUS(inkex.EffectExtension):
                                                    '> object, please convert it to a path first.'))
                     self.warnings[str(node.tag)] = 1
                 pass
+
 # -----------------------------------------------------------------------------------------------------
 
     def DoWePlotLayer(self, strLayerName):
@@ -815,6 +817,7 @@ class LUS(inkex.EffectExtension):
                 self.plotCurrentLayer = True  # We get to plot the layer!
                 self.LayersPlotted += 1
         # Note: this function is only called if we are NOT plotting all layers.
+
 # -----------------------------------------------------------------------------------------------------
 
     def getLength(self, name, default):
@@ -835,20 +838,23 @@ class LUS(inkex.EffectExtension):
         else:
             # No width specified; assume the default value
             return float(default)
+
 # -----------------------------------------------------------------------------------------------------
 
     def distance(self, x, y):
         return sqrt(x * x + y * y)
+
 # -----------------------------------------------------------------------------------------------------
 
     def getDocProps(self):
 
         self.svgHeight = self.getLength('height', N_PAGE_HEIGHT)
         self.svgWidth = self.getLength('width', N_PAGE_WIDTH)
-        if (self.svgHeight == None) or (self.svgWidth == None):
+        if (self.svgHeight is None) or (self.svgWidth is None):
             return False
         else:
             return True
+
 # -----------------------------------------------------------------------------------------------------
 
     def plotPath(self, path, matTransform):
@@ -889,13 +895,14 @@ class LUS(inkex.EffectExtension):
                     self.plotLine()
                     self.fPrevX = self.fX
                     self.fPrevY = self.fY
-                #self.doCommand(str(nIndex ))
+                # self.doCommand(str(nIndex ))
                 if self.plotCurrentLayer:
                     if nIndex == 0:
                         self.penUp()
                     elif nIndex == 1:
                         self.penDown()
                 nIndex += 1
+
 # -----------------------------------------------------------------------------------------------------
 
     def penUp(self):
@@ -905,6 +912,7 @@ class LUS(inkex.EffectExtension):
                 # self.doCommand( 'G01 Z'+str(self.options.penUpPosition)) # for future needs
                 self.doCommand('G01 Z1000')  # for a while
                 time.sleep(self.options.penDelay)
+
 # -----------------------------------------------------------------------------------------------------
 
     def penDown(self):
@@ -914,6 +922,7 @@ class LUS(inkex.EffectExtension):
                 # self.doCommand( 'G01 Z'+str(self.options.penDownPosition)) # for future needs
                 self.doCommand('G01 Z0')   # for a while
                 time.sleep(self.options.penDelay)
+
 # -----------------------------------------------------------------------------------------------------
 
     def plotLine(self):
@@ -962,6 +971,7 @@ class LUS(inkex.EffectExtension):
                 nDeltaY -= yd
 
 # -----------------------------------------------------------------------------------------------------
+
     def doCommand(self, cmd):
 
         if self.LU:  # to Line-us
@@ -979,25 +989,25 @@ class LUS(inkex.EffectExtension):
                     time.sleep(0.5)
                     self.send_cmd(cmd)  # put it again
                     inkex.errormsg('Repeated: '+cmd)
-            except:
+            except Exception as err:
                 pass
 
         if self.GF:  # to Gcode File
             cmd += '\n'
             try:
                 self.send_cmd(cmd)
-            except:
+            except Exception as err:
                 pass
+
 # -----------------------------------------------------------------------------------------------------
 
     def doRequest(self):
         line = 'Not connected'
         if self.connected:
-            # self._sock.send('Hello')
-            self._sock.send(b'Hello')
+            self._sock.send('Hello')
             line = self.get_resp()
-            inkex.errormsg(line)
         return line
+
 # -----------------------------------------------------------------------------------------------------
 
     def connect(self):
@@ -1007,10 +1017,11 @@ class LUS(inkex.EffectExtension):
             # self._sock.connect(('10.10.100.254', 1337))	# longtolik
             inkex.errormsg('Connected')
             self.connected = True
-        except:
+        except ConnectionError as connerr:
             inkex.errormsg(gettext.gettext('Not connected'))
             self.connected = False
         return
+
 # -----------------------------------------------------------------------------------------------------
 
     def get_resp(self):
@@ -1018,7 +1029,7 @@ class LUS(inkex.EffectExtension):
             return
         tim = 0
         lin = b''
-        while (tim < 1000):  # do it 10 seconds
+        while (tim < 1000):  # try for 10 seconds
             char = self._sock.recv(1)
             if char != b'\x00':
                 lin += char
@@ -1030,8 +1041,9 @@ class LUS(inkex.EffectExtension):
 
         if (tim > 990):
             lin = b'Time_out'
-            # lin = 'Time_out'
+
         return lin.decode('utf-8')
+
 # -----------------------------------------------------------------------------------------------------
 
     def send_cmd(self, cmd):
@@ -1046,5 +1058,6 @@ class LUS(inkex.EffectExtension):
 
 
 # -----------------------------------------------------------------------------------------------------
+
 if __name__ == '__main__':
     LUS().run()
