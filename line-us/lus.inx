@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Line-us Control</name>
+  <id>command.physicalcomputing.ru.lus.rev20</id>
+  <dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
+  <dependency type="executable" location="inx">lus_parser_sender.py</dependency>
+  <param name="tab" type="notebook">
+
+    <page name="splash" gui-text="Plot">
+      <label>Press 'Apply' to begin plotting</label>
+      <label>(Use other tabs to configure)</label>
+    </page>
+
+    <page name="gcode" gui-text="G-code">
+      <label>Press 'Apply' to write G-code file</label>
+      <label>(Use other tabs to configure)</label>
+    </page>
+
+    <page name="setup" gui-text="Pen Setup">
+      <param name="penUpPosition" type="int" min="0" max="1000"
+        gui-text="         Up position, 0...1000:">1000</param>
+      <param name="penDownPosition" type="int" min="0" max="1000"
+        gui-text="         Down position, 0...1000:">0</param>
+      <spacer />
+      <label>Press 'Apply' to save settings</label>
+    </page>
+
+    <page name="options" gui-text="Options">
+      <param name="smoothness" gui-text="          Curve smoothing (bigger is less)"
+        type="float" xml:space="preserve">.1</param>
+      <param name="penDelay" type="float" min="0" max="5"
+        gui-text="          Delay after pen lift/down (s):">0.1</param>
+      <spacer />
+      <label>Press 'Apply' to save settings</label>
+    </page>
+
+    <page name="manual" gui-text="Manual Control">
+      <label>Send commands to:</label>
+      <spacer />
+      <label indent="1">- Move the XY motors</label>
+      <label indent="1">- Move the pen up/down</label>
+      <label indent="1">- Check firmware version</label>
+      <spacer />
+      <param name="manualType" type="optiongroup" appearance="combo"
+        gui-text="              Command: ">
+        <option value="raisepen">Pen Up</option>
+        <option value="lowerpen">Pen Down</option>
+        <option value="walk_X_motor">Move X</option>
+        <option value="walk_Y_motor">Move Y</option>
+        <option value="version_check">Check Version</option>
+      </param>
+      <param name="WalkDistance" type="int" min="-1000" max="1000"
+        gui-text="              Value (100=5mm):">100</param>
+      <spacer />
+      <label>Distance may be positive and negative.</label>
+      <spacer />
+      <label>Press 'Apply' to execute</label>
+    </page>
+
+    <page name="layers" gui-text="Layers">
+      <label>By default, Line-us draws all layers.</label>
+      <spacer />
+      <label>You can choose one or group of the layers,
+        for instance, to change the pen.</label>
+      <label>Press 'Apply' to plot layers where names begin
+        with the selected number only (up to 100).</label>
+      <spacer />
+      <param name="layernumber" type="int" min="0" max="100"
+        gui-text="   Plot layers beginning with: ">1</param>
+    </page>
+
+    <page name="about" gui-text="*">
+      <spacer />
+      <label indent="2">Line-us Control Inkscape extension</label>
+      <label indent="2">Version 2.0 2023-09-26</label>
+      <spacer />
+      <label indent="2" appearance="url">https://github.com/andypiper/Inkscape-Extension</label>
+    </page>
+  </param>
+
+  <effect needs-live-preview="false" needs-document="no">
+    <object-type>all</object-type>
+    <effects-menu>
+      <submenu name="Line-us" />
+    </effects-menu>
+  </effect>
+
+  <script>
+    <command reldir="inx" interpreter="python">lus_parser_sender.py</command>
+  </script>
+</inkscape-extension>
