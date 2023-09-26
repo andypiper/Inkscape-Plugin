@@ -18,18 +18,18 @@
 
     <page name="setup" gui-text="Pen Setup">
       <param name="penUpPosition" type="int" min="0" max="1000"
-        gui-text="         Up position, 0...1000:">1000</param>
+        gui-text="Up position, 0...1000">1000</param>
       <param name="penDownPosition" type="int" min="0" max="1000"
-        gui-text="         Down position, 0...1000:">0</param>
+        gui-text="Down position, 0...1000">0</param>
       <spacer />
       <label>Press 'Apply' to save settings</label>
     </page>
 
     <page name="options" gui-text="Options">
-      <param name="smoothness" gui-text="          Curve smoothing (bigger is less)"
-        type="float" xml:space="preserve">.1</param>
+      <param name="smoothness" gui-text="Curve smoothing (bigger is less)"
+        type="float">.1</param>
       <param name="penDelay" type="float" min="0" max="5"
-        gui-text="          Delay after pen lift/down (s):">0.1</param>
+        gui-text="Delay after pen lift/down (s)">0.1</param>
       <spacer />
       <label>Press 'Apply' to save settings</label>
     </page>
@@ -42,7 +42,7 @@
       <label indent="1">- Check firmware version</label>
       <spacer />
       <param name="manualType" type="optiongroup" appearance="combo"
-        gui-text="              Command: ">
+        gui-text="Command: ">
         <option value="raisepen">Pen Up</option>
         <option value="lowerpen">Pen Down</option>
         <option value="walk_X_motor">Move X</option>
@@ -50,11 +50,11 @@
         <option value="version_check">Check Version</option>
       </param>
       <param name="WalkDistance" type="int" min="-1000" max="1000"
-        gui-text="              Value (100=5mm):">100</param>
+        gui-text="Value (100=5mm):">100</param>
       <spacer />
-      <label>Distance may be positive and negative.</label>
+      <label>Distance may be positive or negative.</label>
       <spacer />
-      <label>Press 'Apply' to execute</label>
+      <label>Press 'Apply' to send command</label>
     </page>
 
     <page name="layers" gui-text="Layers">
@@ -66,15 +66,25 @@
         with the selected number only (up to 100).</label>
       <spacer />
       <param name="layernumber" type="int" min="0" max="100"
-        gui-text="   Plot layers beginning with: ">1</param>
+        gui-text="Plot layers beginning with: ">1</param>
     </page>
 
     <page name="about" gui-text="*">
-      <spacer />
-      <label indent="2">Line-us Control Inkscape extension</label>
-      <label indent="2">Version 2.0 2023-09-26</label>
-      <spacer />
-      <label indent="2" appearance="url">https://github.com/andypiper/Inkscape-Extension</label>
+      <hbox>
+        <vbox>
+          <spacer />
+          <label indent="2">Line-us Inkscape extension</label>
+          <label indent="2">Version 2.0 2023-09-26</label>
+          <spacer />
+          <label indent="2" appearance="url">https://github.com/andypiper/Line-us-Inkscape</label>
+          <spacer />
+          <label indent="2">(unofficial; not affiliated with the Line-us company)</label>
+        </vbox>
+        <vbox>
+          <spacer />
+          <image width="96" height="96">./line-us-logo-black.png</image>
+        </vbox>
+      </hbox>
     </page>
   </param>
 

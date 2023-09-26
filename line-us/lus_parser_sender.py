@@ -2,16 +2,18 @@
 # @andypiper
 #
 # Changes:
-# - migrate to Inkscape 1.0 and 1.2+
-# - tidy up UI
-# - remove cruft
+# - migrated to Inkscape 1.0 and 1.2+
+# - tidied up UI
+# - removed (some) cruft
+# - pulled in changes from https://github.com/amyszczepanski/Inkscape-Plugin
 #
+# TODO: consistency in var and func names (pylint)
 # TODO: wrap exceptions
+# TODO: docstrings
 # TODO: debug handler
-# TODO: implement tests
-# TODO: enable configuring Line-us lan address
-# TODO: enable configuring Gcode filename
-# TODO: consistency in var and func names
+# TODO: implement tests -> so it can be added to Inkscape Gallery
+# TODO: enable manually configuring Line-us lan address
+# TODO: enable configuring Gcode filename for output
 
 # lus_parser_sender.py
 # Part of the Line-us extension for Inkscape
@@ -33,21 +35,24 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from bezmisc import *
-from math import sqrt
-from simpletransform import *
 import gettext
-import simplepath
-import cspsubdiv
 import os
-import inkex
-from inkex.elements import Group
-
 import string
 import sys
-
 import socket
 import time
+
+import inkex
+
+from inkex import bezier
+from inkex.elements import Group, PathElement
+from inkex.paths import Path
+from inkex.transforms import Transform
+from inkex.utils import filename_arg
+from argparse import ArgumentParser, Namespace
+from lxml import etree
+from math import sqrt
+
 
 # delay (seconds) for the pen to go up/down before the next move
 N_PEN_DELAY = 0.0
@@ -67,15 +72,31 @@ if platform == 'win32':
     HOME = os.path.realpath(
         "C:/")  # Arguably, this should be %APPDATA% or %TEMP%
 
-Gcode_file = os.path.join(HOME, '\\0\\0000007.txt')
-# Gcode_file =  os.path.join( HOME,'\\Users',USER,'\\Documents\\LineUsFiles\\0000007.txt' )
+Gcode_file = os.path.join(HOME, 'lus-output.txt')
 
-# -----------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------
 
 
-def parseLengthWithUnits(str):
+def _lists(mat):
+    return [list(row) for row in mat]
+
+
+def composeTransform(mat1, mat2):
+    """Transform(M1) * Transform(M2)"""
+    return _lists((Transform(mat1) @ Transform(mat2)).matrix)
+
+
+def parseTransform(transf, mat=None):
+    """Transform(str).matrix"""
+    t = Transform(transf)
+    if mat is not None:
+        t = Transform(mat) * t
+    return _lists(t.matrix)
+
+
+def parseLengthWithUnits(lwu):
     u = 'px'
-    s = str.strip()
+    s = lwu.strip()
     if s[-2:] == 'px':
         s = s[:-2]
     elif s[-1:] == '%':
@@ -105,12 +126,12 @@ def subdivideCubicPath(sp, flat, i=1):
 
             b = (p0, p1, p2, p3)
 
-            if cspsubdiv.maxdist(b) > flat:
+            if bezier.maxdist(b) > flat:
                 break
 
             i += 1
 
-        one, two = beziersplitatt(b, 0.5)
+        one, two = bezier.beziersplitatt(b, 0.5)
         sp[i - 1][2] = one[1]
         sp[i][0] = two[2]
         p = [one[2], one[3], two[1]]
@@ -164,6 +185,8 @@ class LUS(inkex.EffectExtension):
                                      dest="WalkDistance", default=N_WALK_DEFAULT,
                                      help="Selected layer for multilayer plotting")
 
+        self.add_arguments(self.arg_parser)
+
         self.PenIsUp = True
         self.fX = None
         self.fY = None
@@ -200,11 +223,12 @@ class LUS(inkex.EffectExtension):
         # Main entry
 
         # self.svg = self.svg.select_all()
+        self.svg = self.document.getroot()
         self.CheckSVGforLUSData()
 
 # ____________	Output to Line-us here   ____________________________________
 
-        if self.options.tab == '"splash"':      # Plot
+        if self.options.tab == 'splash':      # Plot
             self.LU = True
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connect()
@@ -215,13 +239,13 @@ class LUS(inkex.EffectExtension):
             self.svgLayer = 12345  # indicate that we are plotting all layers.
             self.plotToLUS()
 
-        elif self.options.tab == '"manual"':
+        elif self.options.tab == 'manual':
             self.LU = True
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connect()
             self.manualCommand()
 
-        elif self.options.tab == '"layers"':
+        elif self.options.tab == 'layers':
             self.LU = True
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connect()
@@ -232,7 +256,7 @@ class LUS(inkex.EffectExtension):
             self.svgNodeCount = 0
             self.svgLayer = self.options.layernumber
             self.plotToLUS()
-            if (self.LayersPlotted == 0):
+            if self.LayersPlotted == 0:
                 inkex.errormsg(gettext.gettext(
                     "Did not find any numbered layers to plot."))
 
@@ -244,7 +268,7 @@ class LUS(inkex.EffectExtension):
 
 # ____________	Output to G-code file here   ____________________________________
 
-        elif self.options.tab == '"gcode"':  # G-code
+        elif self.options.tab == 'gcode':  # G-code
             self.GF = True
             self.fil = open(Gcode_file, 'w')
             self.fil.write('G54 X0 Y0 S1\n')  # write header needed for Line-us
@@ -274,9 +298,9 @@ class LUS(inkex.EffectExtension):
     def CheckSVGforLUSData(self):
         self.svgDataRead = False
         self.recursiveLUSDataScan(self.svg)
-        if (not self.svgDataRead):  # if there is no lus data, add some:
-            luslayer = self.svg.add(Group.new('lus', is_layer=True))
-            # luslayer = inkex.etree.SubElement(self.svg, 'lus')
+        if not self.svgDataRead:  # if there is no lus data, add some:
+            # luslayer = self.svg.add(Group.new('lus', is_layer=True))
+            luslayer = etree.SubElement(self.svg, 'lus')
 
             luslayer.set('layer', str(0))
             luslayer.set('node', str(0))
@@ -287,7 +311,7 @@ class LUS(inkex.EffectExtension):
 # -----------------------------------------------------------------------------------------------------
 
     def recursiveLUSDataScan(self, aNodeList):
-        if (not self.svgDataRead):
+        if not self.svgDataRead:
             for node in aNodeList:
                 if node.tag == 'svg':
                     self.recursiveLUSDataScan(node)
@@ -311,7 +335,7 @@ class LUS(inkex.EffectExtension):
 # -----------------------------------------------------------------------------------------------------
 
     def UpdateSVGLUSData(self, aNodeList):
-        if (not self.svgDataRead):
+        if not self.svgDataRead:
             for node in aNodeList:
                 if node.tag == 'svg':
                     self.UpdateSVGLUSData(node)
@@ -326,7 +350,6 @@ class LUS(inkex.EffectExtension):
 # -----------------------------------------------------------------------------------------------------
 
     def manualCommand(self):
-
         if self.options.manualType == "none":
             return
 
@@ -361,7 +384,7 @@ class LUS(inkex.EffectExtension):
         # Plotting
         # parse the svg data as a series of line segments and send each segment to be plotted
 
-        if (not self.getDocProps()):
+        if not self.getDocProps():
             # Cannot handle the document's dimensions!!!
             inkex.errormsg(gettext.gettext(
                 'The document to be plotted has invalid dimensions. ' +
@@ -378,8 +401,11 @@ class LUS(inkex.EffectExtension):
             if (float(vinfo[2]) != 0) and (float(vinfo[3]) != 0):
                 sx = self.svgWidth / float(vinfo[2])
                 sy = self.svgHeight / float(vinfo[3])
-                self.svgTransform = parseTransform('scale(%f,%f) translate(%f,%f)' % (
-                    sx, sy, -float(vinfo[0]), -float(vinfo[1])))
+                self.svgTransform = inkex.transforms.Transform(
+                    'scale(%f,%f) translate(%f,%f)' % (sx, sy, -float(vinfo[0]), -float(vinfo[1])))
+
+                # self.svgTransform = parseTransform('scale(%f,%f) translate(%f,%f)' % (
+                #     sx, sy, -float(vinfo[0]), -float(vinfo[1])))
         try:
             self.recursivelyTraverseSvg(self.svg, self.svgTransform)
 
@@ -421,15 +447,19 @@ class LUS(inkex.EffectExtension):
                 pass
 
             # first apply the current matrix transform to this node's tranform
-            matNew = composeTransform(
-                matCurrent, parseTransform(node.get("transform")))
+            matNew = matCurrent * \
+                inkex.transforms.Transform(node.get("transform"))
+            # TODO: DeprecationWarning: inkex.deprecated.main.transform_mul -> Use @ operator instead
+
+            # matNew = composeTransform(
+            #     matCurrent, parseTransform(node.get("transform")))
 
             if node.tag == inkex.addNS('g', 'svg') or node.tag == 'g':
                 # self.penUp()
 
                 if (node.get(inkex.addNS('groupmode', 'inkscape')) == 'layer'):
                     if not self.allLayers:
-                        #inkex.errormsg('Plotting layer named: ' + node.get(inkex.addNS('label', 'inkscape')))
+                        # inkex.errormsg('Plotting layer named: ' + node.get(inkex.addNS('label', 'inkscape')))
                         self.DoWePlotLayer(
                             node.get(inkex.addNS('label', 'inkscape')))
                 self.recursivelyTraverseSvg(node, matNew, parent_visibility=v)
@@ -492,24 +522,33 @@ class LUS(inkex.EffectExtension):
                 # fourth side implicitly
 
                 # Create a path with the outline of the rectangle
-                newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
+                # newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
+                newpath = PathElement()
                 x = float(node.get('x'))
                 y = float(node.get('y'))
                 w = float(node.get('width'))
                 h = float(node.get('height'))
-                s = node.get('style')
-                if s:
-                    newpath.set('style', s)
+                # s = node.get('style')
+                # if s:
+                #     newpath.set('style', s)
                 t = node.get('transform')
                 if t:
-                    newpath.set('transform', t)
-                a = []
-                a.append(['M ', [x, y]])
-                a.append([' l ', [w, 0]])
-                a.append([' l ', [0, h]])
-                a.append([' l ', [-w, 0]])
-                a.append([' Z', []])
-                newpath.set('d', simplepath.formatPath(a))
+                    # newpath.set('transform', t)
+                    newpath.apply_transform(t)
+                a = ''
+                a += 'M ' + str(x) + ' ' + str(y)
+                a += ' l ' + str(w) + ' 0'
+                a += ' l 0 ' + str(h)
+                a += ' l ' + str(-w) + ' 0'
+                a += ' Z'
+                newpath.path = a
+                # a = []
+                # a.append(['M ', [x, y]])
+                # a.append([' l ', [w, 0]])
+                # a.append([' l ', [0, h]])
+                # a.append([' l ', [-w, 0]])
+                # a.append([' Z', []])
+                # newpath.set('d', simplepath.formatPath(a))
                 self.plotPath(newpath, matNew)
 
             elif node.tag == inkex.addNS('line', 'svg') or node.tag == 'line':
@@ -525,21 +564,26 @@ class LUS(inkex.EffectExtension):
                 self.pathcount += 1
 
                 # Create a path to contain the line
-                newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
+                newPath = PathElement()
+                # newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
                 x1 = float(node.get('x1'))
                 y1 = float(node.get('y1'))
                 x2 = float(node.get('x2'))
                 y2 = float(node.get('y2'))
-                s = node.get('style')
-                if s:
-                    newpath.set('style', s)
+                # s = node.get('style')
+                # if s:
+                #     newpath.set('style', s)
                 t = node.get('transform')
                 if t:
                     newpath.set('transform', t)
-                a = []
-                a.append(['M ', [x1, y1]])
-                a.append([' L ', [x2, y2]])
-                newpath.set('d', simplepath.formatPath(a))
+                # a = []
+                # a.append(['M ', [x1, y1]])
+                # a.append([' L ', [x2, y2]])
+                # newpath.set('d', simplepath.formatPath(a))
+                a = ''
+                a += 'M ' + str(x1) + ' ' + str(y1)
+                a += ' L ' + str(x2) + ' ' + str(y2)
+                newpath.path = a
                 self.plotPath(newpath, matNew)
                 self.svgLastPath += 1
                 self.svgLastPathNC = self.nodeCount
@@ -572,11 +616,13 @@ class LUS(inkex.EffectExtension):
                 d = "M " + pa[0]
                 for i in range(1, len(pa)):
                     d += " L " + pa[i]
-                newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
-                newpath.set('d', d)
-                s = node.get('style')
-                if s:
-                    newpath.set('style', s)
+                # newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
+                # newpath.set('d', d)
+                # s = node.get('style')
+                # if s:
+                #     newpath.set('style', s)
+                newpath = PathElement()
+                newpath.path = d
                 t = node.get('transform')
                 if t:
                     newpath.set('transform', t)
@@ -613,11 +659,13 @@ class LUS(inkex.EffectExtension):
                 for i in range(1, len(pa)):
                     d += " L " + pa[i]
                 d += " Z"
-                newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
-                newpath.set('d', d)
-                s = node.get('style')
-                if s:
-                    newpath.set('style', s)
+                # newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
+                # newpath.set('d', d)
+                # s = node.get('style')
+                # if s:
+                #     newpath.set('style', s)
+                newpath = PathElement()
+                newpath.path = d
                 t = node.get('transform')
                 if t:
                     newpath.set('transform', t)
@@ -666,11 +714,13 @@ class LUS(inkex.EffectExtension):
                     '0 1 0 %f,%f ' % (x2, cy) + \
                     'A %f,%f ' % (rx, ry) + \
                     '0 1 0 %f,%f' % (x1, cy)
-                newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
-                newpath.set('d', d)
-                s = node.get('style')
-                if s:
-                    newpath.set('style', s)
+                # newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
+                # newpath.set('d', d)
+                # s = node.get('style')
+                # if s:
+                #     newpath.set('style', s)
+                newpath = PathElement()
+                newpath.path = d
                 t = node.get('transform')
                 if t:
                     newpath.set('transform', t)
@@ -722,7 +772,7 @@ class LUS(inkex.EffectExtension):
             elif node.tag == inkex.addNS('color-profile', 'svg') or node.tag == 'color-profile':
                 # Gamma curves, color temp, etc. are not relevant to single color output
                 pass
-            elif not isinstance(node.tag, basestring):
+            elif not isinstance(node.tag, str):
                 # This is likely an XML processing instruction such as an XML
                 # comment.  lxml uses a function reference for such node tags
                 # and as such the node tag is likely not a printable string.
@@ -807,13 +857,16 @@ class LUS(inkex.EffectExtension):
 
         d = path.get('d')
 
-        if len(simplepath.parsePath(d)) == 0:
+        # if len(simplepath.parsePath(d)) == 0:
+        if len(Path(d).to_arrays()) == 0:
             return
 
-        p = cubicsuperpath.parsePath(d)
+        # p = cubicsuperpath.parsePath(d)
+        p = inkex.paths.CubicSuperPath(inkex.paths.Path(d))
 
         # ...and apply the transformation to each point
-        applyTransformToPath(matTransform, p)
+        # applyTransformToPath(matTransform, p)
+        Path(p).transform(Transform(matTransform)).to_arrays()
 
         # p is now a list of lists of cubic beziers [control pt1, control pt2, endpoint]
         # where the start-point is the last point in the previous segment.
@@ -912,12 +965,14 @@ class LUS(inkex.EffectExtension):
     def doCommand(self, cmd):
 
         if self.LU:  # to Line-us
-            cmd += b'\x00'
+            # cmd += b'\x00'
+            cmd += ''
             response = ''
             try:
                 self.send_cmd(cmd)
                 while (response == ''):
                     response = self.get_resp()
+                    inkex.errormsg(str(response))
                 if (response[0] != 'o'):
                     inkex.errormsg(cmd)
                     inkex.errormsg(str(response))
@@ -936,8 +991,10 @@ class LUS(inkex.EffectExtension):
 # -----------------------------------------------------------------------------------------------------
 
     def doRequest(self):
+        line = 'Not connected'
         if self.connected:
-            self._sock.send('Hello')
+            # self._sock.send('Hello')
+            self._sock.send(b'Hello')
             line = self.get_resp()
             inkex.errormsg(line)
         return line
@@ -948,6 +1005,7 @@ class LUS(inkex.EffectExtension):
             self._sock.connect(('line-us.local', 1337))  # Common
             # self._sock.connect(('192.168.43.156', 1337))	# Yulya
             # self._sock.connect(('10.10.100.254', 1337))	# longtolik
+            inkex.errormsg('Connected')
             self.connected = True
         except:
             inkex.errormsg(gettext.gettext('Not connected'))
@@ -971,14 +1029,17 @@ class LUS(inkex.EffectExtension):
             time.sleep(0.01)
 
         if (tim > 990):
-            lin = 'Time_out'
-        return lin
+            lin = b'Time_out'
+            # lin = 'Time_out'
+        return lin.decode('utf-8')
 # -----------------------------------------------------------------------------------------------------
 
     def send_cmd(self, cmd):
         if self.LU:  # to Line-us
             if self.connected:
-                self._sock.send(cmd)
+                # self._sock.send(cmd)
+                cmd += '\r\n\0'
+                self._sock.sendall(cmd.encode('utf-8'))
         if self.GF:  # to Gcode file
             self.fil.write(cmd)
         return
