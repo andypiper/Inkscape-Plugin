@@ -407,7 +407,7 @@ class LUS(inkex.EffectExtension):
         try:
             self.recursivelyTraverseSvg(self.svg, self.svgTransform)
 
-            if (self.ptFirst):
+            if self.ptFirst:
                 self.fX = self.ptFirst[0]
                 self.fY = self.ptFirst[1]
                 self.nodeCount = self.nodeTarget    # enablesfpx return-to-home only option
@@ -458,7 +458,7 @@ class LUS(inkex.EffectExtension):
             if node.tag == inkex.addNS('g', 'svg') or node.tag == 'g':
                 # self.penUp()
 
-                if (node.get(inkex.addNS('groupmode', 'inkscape')) == 'layer'):
+                if node.get(inkex.addNS('groupmode', 'inkscape')) == 'layer':
                     if not self.allLayers:
                         # inkex.errormsg('Plotting layer named: ' + node.get(inkex.addNS('label', 'inkscape')))
                         self.DoWePlotLayer(
@@ -794,8 +794,7 @@ class LUS(inkex.EffectExtension):
 
         TempNumString = 'x'
         stringPos = 1
-        CurrentLayerName = string.lstrip(
-            strLayerName)  # remove leading whitespace
+        CurrentLayerName = strLayerName.lstrip()  # remove leading whitespace
 
         # Look at layer name.  Sample first character, then first two, and
         # so on, until the string ends or the string no longer consists of
@@ -812,8 +811,8 @@ class LUS(inkex.EffectExtension):
                     break
 
         self.plotCurrentLayer = False  # Temporarily assume that we aren't plotting the layer
-        if (str.isdigit(TempNumString)):
-            if (self.svgLayer == int(float(TempNumString))):
+        if str.isdigit(TempNumString):
+            if self.svgLayer == int(float(TempNumString)):
                 self.plotCurrentLayer = True  # We get to plot the layer!
                 self.LayersPlotted += 1
         # Note: this function is only called if we are NOT plotting all layers.
@@ -852,8 +851,8 @@ class LUS(inkex.EffectExtension):
         self.svgWidth = self.getLength('width', N_PAGE_WIDTH)
         if (self.svgHeight is None) or (self.svgWidth is None):
             return False
-        else:
-            return True
+
+        return True
 
 # -----------------------------------------------------------------------------------------------------
 
@@ -906,7 +905,7 @@ class LUS(inkex.EffectExtension):
 # -----------------------------------------------------------------------------------------------------
 
     def penUp(self):
-        if (not self.PenIsUp):
+        if not self.PenIsUp:
             self.PenIsUp = True
             if self.LU:
                 # self.doCommand( 'G01 Z'+str(self.options.penUpPosition)) # for future needs
@@ -916,7 +915,7 @@ class LUS(inkex.EffectExtension):
 # -----------------------------------------------------------------------------------------------------
 
     def penDown(self):
-        if (self.PenIsUp):
+        if self.PenIsUp:
             self.PenIsUp = False
             if self.LU:
                 # self.doCommand( 'G01 Z'+str(self.options.penDownPosition)) # for future needs
@@ -926,13 +925,13 @@ class LUS(inkex.EffectExtension):
 # -----------------------------------------------------------------------------------------------------
 
     def plotLine(self):
-        if (self.fPrevX is None):
+        if self.fPrevX is None:
             return
 
         nDeltaX = self.fX - self.fPrevX
         nDeltaY = self.fY - self.fPrevY
 
-        if (self.distance(nDeltaX, nDeltaY) > 0):
+        if self.distance(nDeltaX, nDeltaY) > 0:
             self.nodeCount += 1
 
             while ((abs(nDeltaX) > 0) or (abs(nDeltaY) > 0)):
@@ -945,7 +944,7 @@ class LUS(inkex.EffectExtension):
                 if self.LU:  # to Lineus
                     # strOutput = ','.join( ['G01 X'+("%d" % xt)+' Y'+("%d" % yt)])
 
-                    if (xt*yt != 0):   # such a patch
+                    if xt*yt != 0:   # such a patch
                         strOutput = ','.join(
                             ['G01 X'+("%d" % xt)+' Y'+("%d" % yt)])
                     else:
@@ -953,7 +952,7 @@ class LUS(inkex.EffectExtension):
                         strOutput = ','.join(['G01 Z1000'])
 
                 if self.GF:  # to Gcode file
-                    if (not self.PenIsUp):
+                    if not self.PenIsUp:
                         strOutput = ','.join(
                             ['G01 X'+("%d" % xt)+' Y'+("%d" % yt)+' Z0'])
                     else:
@@ -980,15 +979,15 @@ class LUS(inkex.EffectExtension):
             response = ''
             try:
                 self.send_cmd(cmd)
-                while (response == ''):
+                while response == '':
                     response = self.get_resp()
                     inkex.errormsg(str(response))
-                if (response[0] != 'o'):
+                if response[0] != 'o':
                     inkex.errormsg(cmd)
                     inkex.errormsg(str(response))
                     time.sleep(0.5)
                     self.send_cmd(cmd)  # put it again
-                    inkex.errormsg('Repeated: '+cmd)
+                    inkex.errormsg('Repeated: ' + cmd)
             except Exception as err:
                 pass
 
@@ -1020,16 +1019,15 @@ class LUS(inkex.EffectExtension):
         except ConnectionError as connerr:
             inkex.errormsg(gettext.gettext('Not connected'))
             self.connected = False
-        return
 
 # -----------------------------------------------------------------------------------------------------
 
     def get_resp(self):
         if not self.connected:
-            return
+            return None
         tim = 0
         lin = b''
-        while (tim < 1000):  # try for 10 seconds
+        while tim < 1000:  # try for 10 seconds
             char = self._sock.recv(1)
             if char != b'\x00':
                 lin += char
@@ -1039,7 +1037,7 @@ class LUS(inkex.EffectExtension):
             tim = tim+1
             time.sleep(0.01)
 
-        if (tim > 990):
+        if tim > 990:
             lin = b'Time_out'
 
         return lin.decode('utf-8')
@@ -1054,7 +1052,6 @@ class LUS(inkex.EffectExtension):
                 self._sock.sendall(cmd.encode('utf-8'))
         if self.GF:  # to Gcode file
             self.fil.write(cmd)
-        return
 
 
 # -----------------------------------------------------------------------------------------------------
