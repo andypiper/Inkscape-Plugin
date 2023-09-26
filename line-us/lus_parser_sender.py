@@ -11,9 +11,11 @@
 # TODO: docstrings
 # TODO: debug handler
 # TODO: implement tests -> so it can be added to Inkscape Gallery
-# TODO: enable manually configuring Line-us network address
-# TODO: enable configuring filename for Gcode output
+# TODO: use zeroconf; also, fallback manual config for Line-us network address
+# TODO: manual configuring filename for Gcode output
 # TODO: add param gui-description values
+# TODO: borrow a load of stuff from https://github.com/Line-us/LineUsPythonModule/tree/master
+# TODO: nicer versiom info from Line-Us
 
 # lus_parser_sender.py
 # Part of the Line-us extension for Inkscape
