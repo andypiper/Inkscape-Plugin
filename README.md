@@ -1,12 +1,15 @@
-# Inkscape-Plugin
-Inkscape extension for Line-us developed by Anatoly Besplemennov
+# Inkscape extension for Line-us plotter
 
-The plugin is available from the [Inkscape plugins repository](https://inkscape.org/en/~Line-us/★line-us)
+An Inkscape extension to drive a [Line-us](https://www.line-us.com/) plotter.
 
-The plugin uses machine co-ordinates and does not do any scaling, so refer to the 
-[drawing space diagram](https://github.com/Line-us/Line-us-Programming/blob/master/Documentation/GCodeSpec.pdf)
-for details. Note that the Inkscape document units must be set to pixels 
-(File/Document Properties/Cusomt Size/Units). For reference a sample drawing is 
-[included here.](LineUsTestDrawing.svg)
+This is a significantly modified version of the [older Inkscape extension for Line-us](https://github.com/Line-us/Inkscape-Plugin) developed by Anatoly Besplemennov. The original extension was only directly compatible with Inkscape 0.9.2; it no longer worked after Inkscape 1.0 was released. Inkscape 1.0 introduced big changes to the way that extensions are implemented, so this code follows the new requirements.
 
-The plugin appears in the extensions list as LUS
+From the original documentation for the extension:
+
+> The plugin uses machine co-ordinates and does not do any scaling, so refer to the [drawing space diagram](https://github.com/Line-us/Line-us-Programming/blob/master/Documentation/GCodeSpec.pdf) for details. Note that the Inkscape document units must be set to pixels (File/Document Properties/Custom Size/Units). For reference, a sample drawing is [included here.](./LineUsTestDrawing.svg)
+
+## Useful links
+
+- [fork with some compatibility updates](https://github.com/amyszczepanski/Inkscape-Plugin)
+- [Line-us programming reference](https://github.com/Line-us/Line-us-Programming/)
+- [Line-us G-code reference](https://github.com/Line-us/Line-us-Programming/blob/master/Documentation/GCodeSpec.md)
