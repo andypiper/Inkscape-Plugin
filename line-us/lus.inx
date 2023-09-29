@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
   <name>Line-us Control</name>
-  <id>command.physicalcomputing.ru.lus.rev20</id>
+  <id>co.forgeandcraft.lineus.control</id>
   <dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
   <dependency type="executable" location="inx">lus_parser_sender.py</dependency>
   <param name="tab" type="notebook">
