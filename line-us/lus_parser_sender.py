@@ -1,3 +1,5 @@
+# pylint: disable=line-too-long
+
 # Version 2.0, 2023-09-26
 # @andypiper
 #
@@ -6,8 +8,8 @@
 # - tidied up UI
 # - removed (some) cruft
 # - pulled in changes from https://github.com/amyszczepanski/Inkscape-Plugin
-#
-# FIXME: consistency in var and func names (pylint)
+
+# FIXME: consistency in var and func names (pylint) - NOTE: match in inx file
 # TODO: docstrings
 # TODO: debug handler
 # TODO: implement tests -> so it can be added to Inkscape Gallery
@@ -15,7 +17,8 @@
 # TODO: manual configuring filename for Gcode output
 # TODO: add param gui-description values
 # TODO: borrow a load of stuff from https://github.com/Line-us/LineUsPythonModule/tree/master
-# TODO: nicer versiom info from Line-Us
+# TODO: detailed firmware info from Line-Us
+# TODO: refactor to separate files
 
 # lus_parser_sender.py
 # Part of the Line-us extension for Inkscape
@@ -39,17 +42,16 @@
 
 import gettext
 import os
-import string
 import sys
 import socket
 import time
+import shlex
 
 from argparse import ArgumentParser, Namespace
 from math import sqrt
 from lxml import etree
 
 import inkex
-
 from inkex import bezier
 from inkex.elements import Group, PathElement
 from inkex.paths import Path
@@ -65,12 +67,12 @@ N_PEN_DOWN_POS = 0  # Default pen-down position
 N_WALK_DEFAULT = 10  # Default steps for walking stepper motors
 N_DEFAULT_LAYER = 1  # Default inkscape layer
 
-platform = sys.platform.lower()
+PLATFORM = sys.platform.lower()
 
 HOME = os.getenv('HOME')
 USER = os.getenv('USER')
 
-if platform == 'win32':
+if PLATFORM == 'win32':
     HOME = os.path.realpath(
         "C:/")  # Arguably, this should be %APPDATA% or %TEMP%
 
@@ -83,12 +85,12 @@ def _lists(mat):
     return [list(row) for row in mat]
 
 
-def composeTransform(mat1, mat2):
+def compose_transform(mat1, mat2):
     """Transform(M1) * Transform(M2)"""
     return _lists((Transform(mat1) @ Transform(mat2)).matrix)
 
 
-def parseTransform(transf, mat=None):
+def parse_transform(transf, mat=None):
     """Transform(str).matrix"""
     t = Transform(transf)
     if mat is not None:
@@ -96,7 +98,7 @@ def parseTransform(transf, mat=None):
     return _lists(t.matrix)
 
 
-def parseLengthWithUnits(lwu):
+def parse_length_with_units(lwu):
     u = 'px'
     s = lwu.strip()
     if s[-2:] == 'px':
@@ -113,8 +115,7 @@ def parseLengthWithUnits(lwu):
     return v, u
 
 
-def subdivideCubicPath(sp, flat, i=1):
-
+def subdivide_cubic_path(sp, flat, i=1):
     while True:
         while True:
             if i >= len(sp):
@@ -188,32 +189,32 @@ class LUS(inkex.EffectExtension):
 
         self.add_arguments(self.arg_parser)
 
-        self.PenIsUp = True
+        self.pen_is_up = True
         self.fX = None
         self.fY = None
         self.fPrevX = None
         self.fPrevY = None
         self.ptFirst = None
-        self.nodeCount = int(0)
-        self.nodeTarget = int(0)
-        self.pathcount = int(0)
-        self.LayersPlotted = 0
+        self.node_count = int(0)
+        self.node_target = int(0)
+        self.path_count = int(0)
+        self.layers_plotted = 0
 
-        self.svgLayer = int(0)
-        self.svgNodeCount = int(0)
-        self.svgDataRead = False
-        self.svgLastPath = int(0)
-        self.svgLastPathNC = int(0)
+        self.svg_layer = int(0)
+        self.svg_node_count = int(0)
+        self.svg_data_read = False
+        self.svg_last_path = int(0)
+        self.svg_last_path_NC = int(0)
 
-        self.svgTotalDeltaX = int(0)
-        self.svgTotalDeltaY = int(0)
+        self.svg_total_delta_X = int(0)
+        self.svg_total_delta_Y = int(0)
 
-        nDeltaX = 0
-        nDeltaY = 0
+        n_delta_X = 0
+        n_delta_Y = 0
 
-        self.svgWidth = float(N_PAGE_WIDTH)
-        self.svgHeight = float(N_PAGE_HEIGHT)
-        self.svgTransform = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+        self.svg_width = float(N_PAGE_WIDTH)
+        self.svg_height = float(N_PAGE_HEIGHT)
+        self.svg_transform = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
         self.warnings = {}
         self.step_scaling_factor = 1
         self.GF = False  # GF means to G-code File
@@ -226,7 +227,7 @@ class LUS(inkex.EffectExtension):
 
         # self.svg = self.svg.select_all()
         self.svg = self.document.getroot()
-        self.CheckSVGforLUSData()
+        self.check_svg_for_lus_data()
 
 # ____________	Output to Line-us  ______________________________
 
@@ -234,51 +235,54 @@ class LUS(inkex.EffectExtension):
             self.LU = True
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connect()
-            self.allLayers = True
-            self.plotCurrentLayer = True
-            self.svgNodeCount = 0
-            self.svgLastPath = 0
-            self.svgLayer = 12345  # indicate that we are plotting all layers.
-            self.plotToLUS()
+            self.all_layers = True
+            self.plot_current_layer = True
+            self.svg_node_count = 0
+            self.svg_last_path = 0
+            self.svg_layer = 12345  # indicate that we are plotting all layers.
+            self.plot_to_lus()
 
         elif self.options.tab == 'manual':
             self.LU = True
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connect()
-            self.manualCommand()
+            self.manual_command()
 
         elif self.options.tab == 'layers':
             self.LU = True
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connect()
-            self.allLayers = False
-            self.plotCurrentLayer = False
-            self.LayersPlotted = 0
-            self.svgLastPath = 0
-            self.svgNodeCount = 0
-            self.svgLayer = self.options.layernumber
-            self.plotToLUS()
-            if self.LayersPlotted == 0:
+            self.all_layers = False
+            self.plot_current_layer = False
+            self.layers_plotted = 0
+            self.svg_last_path = 0
+            self.svg_node_count = 0
+            self.svg_layer = self.options.layernumber
+            self.plot_to_lus()
+            if self.layers_plotted == 0:
                 inkex.errormsg(gettext.gettext(
                     "Did not find any numbered layers to plot."))
 
 # ____________	Output to G-code file  __________________
 
         elif self.options.tab == 'gcode':  # G-code
+            # TODO: add comment to the output with current Inkscape file name and extension info
             self.GF = True
-            self.fil = open(Gcode_file, 'w')
-            self.fil.write('G54 X0 Y0 S1\n')  # write header needed for Line-us
-            self.allLayers = True
-            self.plotCurrentLayer = True
-            self.svgNodeCount = 0
-            self.svgLastPath = 0
-            self.svgLayer = 12345  # indicate that we are plotting all layers.
-            self.plotToLUS()
+            with open(Gcode_file, 'w', encoding="utf8") as self.fil:
+                # write header needed for Line-us
+                self.fil.write('G54 X0 Y0 S1\n')
+                self.all_layers = True
+                self.plot_current_layer = True
+                self.svg_node_count = 0
+                self.svg_last_path = 0
+                # indicate that we are plotting all layers.
+                self.svg_layer = 12345
+                self.plot_to_lus()
 
 # ____________	Common  final section   ____________________________________
 
-        self.svgDataRead = False
-        self.UpdateSVGLUSData(self.svg)
+        self.svg_data_read = False
+        self.update_svg_lus_data(self.svg)
 
         if self.LU:  # to Line-us
             self._sock.close()
@@ -288,14 +292,12 @@ class LUS(inkex.EffectExtension):
         self.LU = False
         self.GF = False
 
-        return
-
 # -----------------------------------------------------------------------------------------------------
 
-    def CheckSVGforLUSData(self):
-        self.svgDataRead = False
-        self.recursiveLUSDataScan(self.svg)
-        if not self.svgDataRead:  # if there is no lus data, add some:
+    def check_svg_for_lus_data(self):
+        self.svg_data_read = False
+        self.recursive_lus_data_scan(self.svg)
+        if not self.svg_data_read:  # if there is no lus data, add some:
             # luslayer = self.svg.add(Group.new('lus', is_layer=True))
             luslayer = etree.SubElement(self.svg, 'lus')
 
@@ -308,61 +310,62 @@ class LUS(inkex.EffectExtension):
 
 # -----------------------------------------------------------------------------------------------------
 
-    def recursiveLUSDataScan(self, aNodeList):
-        if not self.svgDataRead:
+    def recursive_lus_data_scan(self, aNodeList):
+        if not self.svg_data_read:
             for node in aNodeList:
                 if node.tag == 'svg':
-                    self.recursiveLUSDataScan(node)
+                    self.recursive_lus_data_scan(node)
                 elif node.tag == inkex.addNS('botbot', 'svg') or node.tag == 'lus':
 
-                    self.svgLayer = int(node.get('layer'))
-                    self.svgNodeCount = int(node.get('node'))
+                    self.svg_layer = int(node.get('layer'))
+                    self.svg_node_count = int(node.get('node'))
 
                     try:
-                        self.svgLastPath = int(node.get('lastpath'))
-                        self.svgLastPathNC = int(node.get('lastpathnc'))
-                        self.svgTotalDeltaX = int(node.get('totaldeltax'))
-                        self.svgTotalDeltaY = int(node.get('totaldeltay'))
-                        self.svgDataRead = True
+                        self.svg_last_path = int(node.get('lastpath'))
+                        self.svg_last_path_NC = int(node.get('lastpathnc'))
+                        self.svg_total_delta_X = int(node.get('totaldeltax'))
+                        self.svg_total_delta_Y = int(node.get('totaldeltay'))
+                        self.svg_data_read = True
                     except ValueError as verr:
                         node.set('lastpath', str(0))
                         node.set('lastpathnc', str(0))
                         node.set('totaldeltax', str(0))
                         node.set('totaldeltay', str(0))
-                        self.svgDataRead = True
+                        self.svg_data_read = True
 
 # -----------------------------------------------------------------------------------------------------
 
-    def UpdateSVGLUSData(self, aNodeList):
-        if not self.svgDataRead:
+    def update_svg_lus_data(self, aNodeList):
+        if not self.svg_data_read:
             for node in aNodeList:
                 if node.tag == 'svg':
-                    self.UpdateSVGLUSData(node)
+                    self.update_svg_lus_data(node)
                 elif node.tag == inkex.addNS('lus', 'svg') or node.tag == 'lus':
-                    node.set('layer', str(self.svgLayer))
-                    node.set('node', str(self.svgNodeCount))
-                    node.set('lastpath', str(self.svgLastPath))
-                    node.set('lastpathnc', str(self.svgLastPathNC))
-                    node.set('totaldeltax', str(self.svgTotalDeltaX))
-                    node.set('totaldeltay', str(self.svgTotalDeltaY))
-                    self.svgDataRead = True
+                    node.set('layer', str(self.svg_layer))
+                    node.set('node', str(self.svg_node_count))
+                    node.set('lastpath', str(self.svg_last_path))
+                    node.set('lastpathnc', str(self.svg_last_path_NC))
+                    node.set('totaldeltax', str(self.svg_total_delta_X))
+                    node.set('totaldeltay', str(self.svg_total_delta_Y))
+                    self.svg_data_read = True
 
 # -----------------------------------------------------------------------------------------------------
 
-    def manualCommand(self):
+    def manual_command(self):
         if self.options.manualType == "none":
             return
 
         if self.options.manualType == "raise_pen":
-            self.penUp()
+            self.pen_up()
 
         elif self.options.manualType == "lower_pen":
-            self.penDown()
+            self.pen_down()
 
         elif self.options.manualType == "version_check":
-            strVersion = self.doRequest()
-            inkex.errormsg('Version: ' + strVersion)
+            version_info = self.get_hello_info()
+            inkex.errormsg(version_info)
 
+        # FIXME: this might be broken?
         elif self.options.manualType == "walk_X_motor" or "walk_Y_motor":
             if self.options.manualType == "walk_X_motor":
                 nDeltaX = self.options.WalkDistance
@@ -374,17 +377,17 @@ class LUS(inkex.EffectExtension):
                 return
 
             strOutput = ','.join(['G01 X'+str(nDeltaX)+' Y'+str(nDeltaY)])
-            self.doCommand(strOutput)
+            self.do_command(strOutput)
 
         return
 
 # -----------------------------------------------------------------------------------------------------
 
-    def plotToLUS(self):
+    def plot_to_lus(self):
         # Plotting
         # parse the svg data as a series of line segments and send each segment to be plotted
 
-        if not self.getDocProps():
+        if not self.get_doc_properties():
             # Cannot handle the document's dimensions!!!
             inkex.errormsg(gettext.gettext(
                 'The document to be plotted has invalid dimensions. ' +
@@ -399,46 +402,46 @@ class LUS(inkex.EffectExtension):
         if viewbox:
             vinfo = viewbox.strip().replace(',', ' ').split(' ')
             if (float(vinfo[2]) != 0) and (float(vinfo[3]) != 0):
-                sx = self.svgWidth / float(vinfo[2])
-                sy = self.svgHeight / float(vinfo[3])
-                self.svgTransform = inkex.transforms.Transform(
+                sx = self.svg_width / float(vinfo[2])
+                sy = self.svg_height / float(vinfo[3])
+                self.svg_transform = inkex.transforms.Transform(
                     'scale(%f,%f) translate(%f,%f)' % (sx, sy, -float(vinfo[0]), -float(vinfo[1])))
 
                 # self.svgTransform = parseTransform('scale(%f,%f) translate(%f,%f)' % (
                 #     sx, sy, -float(vinfo[0]), -float(vinfo[1])))
         try:
-            self.recursivelyTraverseSvg(self.svg, self.svgTransform)
+            self.recursively_traverse_svg(self.svg, self.svg_transform)
 
             if self.ptFirst:
                 self.fX = self.ptFirst[0]
                 self.fY = self.ptFirst[1]
-                self.nodeCount = self.nodeTarget    # enablesfpx return-to-home only option
-                self.plotLine()
+                self.node_count = self.node_target    # enablesfpx return-to-home only option
+                self.plot_line()
 
                 # Return Home here
-                self.penUp()
+                self.pen_up()
                 # or G28 Return to Home Position
-                self.doCommand('G01 X1000 Y1000')
+                self.do_command('G01 X1000 Y1000')
                 # self.doCommand( 'G01 Z1000' ) # or G28 Return to Home Position
 
                 # _______ End of Plotting _______________________________________
 
             # inkex.errormsg('Final node count: ' + str(self.svgNodeCount))
-            self.svgLayer = 0
+            self.svg_layer = 0
             # self.svgNodeCount = 0
-            self.svgLastPath = 0
-            self.svgLastPathNC = 0
-            self.svgTotalDeltaX = 0
-            self.svgTotalDeltaY = 0
+            self.svg_last_path = 0
+            self.svg_last_path_NC = 0
+            self.svg_total_delta_X = 0
+            self.svg_total_delta_Y = 0
         finally:
             # We may have had an exception
             pass  # inkex.errormsg('End drawing')
 
 # -----------------------------------------------------------------------------------------------------
 
-    def recursivelyTraverseSvg(self, aNodeList,
-                               matCurrent=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-                               parent_visibility='visible'):
+    def recursively_traverse_svg(self, aNodeList,
+                                 matCurrent=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                                 parent_visibility='visible'):
         for node in aNodeList:
             # Ignore invisible nodes
             v = node.get('visibility', parent_visibility)
@@ -452,7 +455,6 @@ class LUS(inkex.EffectExtension):
             #     inkex.transforms.Transform(node.get("transform"))
             matNew = matCurrent @ inkex.transforms.Transform(
                 node.get("transform"))
-            # FIXME: DeprecationWarning: inkex.deprecated.main.transform_mul -> Use @ operator instead
 
             # matNew = composeTransform(
             #     matCurrent, parseTransform(node.get("transform")))
@@ -461,11 +463,12 @@ class LUS(inkex.EffectExtension):
                 # self.penUp()
 
                 if node.get(inkex.addNS('groupmode', 'inkscape')) == 'layer':
-                    if not self.allLayers:
+                    if not self.all_layers:
                         # inkex.errormsg('Plotting layer named: ' + node.get(inkex.addNS('label', 'inkscape')))
-                        self.DoWePlotLayer(
+                        self.do_we_plot_layer(
                             node.get(inkex.addNS('label', 'inkscape')))
-                self.recursivelyTraverseSvg(node, matNew, parent_visibility=v)
+                self.recursively_traverse_svg(
+                    node, matNew, parent_visibility=v)
 
             elif node.tag == inkex.addNS('use', 'svg') or node.tag == 'use':
 
@@ -492,12 +495,12 @@ class LUS(inkex.EffectExtension):
                         y = float(node.get('y', '0'))
                         # Note: the transform has already been applied
                         if (x != 0) or (y != 0):
-                            matNew2 = composeTransform(
-                                matNew, parseTransform('translate(%f,%f)' % (x, y)))
+                            matNew2 = compose_transform(
+                                matNew, parse_transform('translate(%f,%f)' % (x, y)))
                         else:
                             matNew2 = matNew
                         v = node.get('visibility', v)
-                        self.recursivelyTraverseSvg(
+                        self.recursively_traverse_svg(
                             refnode, matNew2, parent_visibility=v)
                     else:
                         pass
@@ -506,10 +509,10 @@ class LUS(inkex.EffectExtension):
 
             elif node.tag == inkex.addNS('path', 'svg'):
 
-                self.pathcount += 1
-                self.plotPath(node, matNew)
-                self.svgLastPath += 1
-                self.svgLastPathNC = self.nodeCount
+                self.path_count += 1
+                self.plot_path(node, matNew)
+                self.svg_last_path += 1
+                self.svg_last_path_NC = self.node_count
 
             elif node.tag == inkex.addNS('rect', 'svg') or node.tag == 'rect':
 
@@ -552,7 +555,7 @@ class LUS(inkex.EffectExtension):
                 # a.append([' l ', [-w, 0]])
                 # a.append([' Z', []])
                 # newpath.set('d', simplepath.formatPath(a))
-                self.plotPath(newpath, matNew)
+                self.plot_path(newpath, matNew)
 
             elif node.tag == inkex.addNS('line', 'svg') or node.tag == 'line':
 
@@ -564,10 +567,10 @@ class LUS(inkex.EffectExtension):
                 #
                 #   <path d="MX1,Y1 LX2,Y2"/>
 
-                self.pathcount += 1
+                self.path_count += 1
 
                 # Create a path to contain the line
-                newPath = PathElement()
+                newpath = PathElement()
                 # newpath = inkex.etree.Element(inkex.addNS('path', 'svg'))
                 x1 = float(node.get('x1'))
                 y1 = float(node.get('y1'))
@@ -587,9 +590,9 @@ class LUS(inkex.EffectExtension):
                 a += 'M ' + str(x1) + ' ' + str(y1)
                 a += ' L ' + str(x2) + ' ' + str(y2)
                 newpath.path = a
-                self.plotPath(newpath, matNew)
-                self.svgLastPath += 1
-                self.svgLastPathNC = self.nodeCount
+                self.plot_path(newpath, matNew)
+                self.svg_last_path += 1
+                self.svg_last_path_NC = self.node_count
 
             elif node.tag == inkex.addNS('polyline', 'svg') or node.tag == 'polyline':
 
@@ -607,7 +610,7 @@ class LUS(inkex.EffectExtension):
                 if pl == '':
                     pass
 
-                self.pathcount += 1
+                self.path_count += 1
 
                 pa = pl.split()
                 if not len(pa):
@@ -629,9 +632,9 @@ class LUS(inkex.EffectExtension):
                 t = node.get('transform')
                 if t:
                     newpath.set('transform', t)
-                self.plotPath(newpath, matNew)
-                self.svgLastPath += 1
-                self.svgLastPathNC = self.nodeCount
+                self.plot_path(newpath, matNew)
+                self.svg_last_path += 1
+                self.svg_last_path_NC = self.node_count
 
             elif node.tag == inkex.addNS('polygon', 'svg') or node.tag == 'polygon':
 
@@ -649,7 +652,7 @@ class LUS(inkex.EffectExtension):
                 if pl == '':
                     pass
 
-                self.pathcount += 1
+                self.path_count += 1
 
                 pa = pl.split()
                 if not len(pa):
@@ -672,9 +675,9 @@ class LUS(inkex.EffectExtension):
                 t = node.get('transform')
                 if t:
                     newpath.set('transform', t)
-                self.plotPath(newpath, matNew)
-                self.svgLastPath += 1
-                self.svgLastPathNC = self.nodeCount
+                self.plot_path(newpath, matNew)
+                self.svg_last_path += 1
+                self.svg_last_path_NC = self.node_count
 
             elif node.tag == inkex.addNS('ellipse', 'svg') or \
                     node.tag == 'ellipse' or \
@@ -706,7 +709,7 @@ class LUS(inkex.EffectExtension):
                 if rx == 0 or ry == 0:
                     pass
 
-                self.pathcount += 1
+                self.path_count += 1
 
                 cx = float(node.get('cx', '0'))
                 cy = float(node.get('cy', '0'))
@@ -727,9 +730,9 @@ class LUS(inkex.EffectExtension):
                 t = node.get('transform')
                 if t:
                     newpath.set('transform', t)
-                self.plotPath(newpath, matNew)
-                self.svgLastPath += 1
-                self.svgLastPathNC = self.nodeCount
+                self.plot_path(newpath, matNew)
+                self.svg_last_path += 1
+                self.svg_last_path_NC = self.node_count
             elif node.tag == inkex.addNS('metadata', 'svg') or node.tag == 'metadata':
                 pass
             elif node.tag == inkex.addNS('defs', 'svg') or node.tag == 'defs':
@@ -792,40 +795,41 @@ class LUS(inkex.EffectExtension):
 
 # -----------------------------------------------------------------------------------------------------
 
-    def DoWePlotLayer(self, strLayerName):
+    def do_we_plot_layer(self, strLayerName):
 
-        TempNumString = 'x'
-        stringPos = 1
-        CurrentLayerName = strLayerName.lstrip()  # remove leading whitespace
+        temp_num_string = 'x'
+        string_pos = 1
+        current_layer_name = strLayerName.lstrip()  # remove leading whitespace
 
         # Look at layer name.  Sample first character, then first two, and
         # so on, until the string ends or the string no longer consists of
         # digit characters only.
 
-        MaxLength = len(CurrentLayerName)
+        MaxLength = len(current_layer_name)
         if MaxLength > 0:
-            while stringPos <= MaxLength:
-                if str.isdigit(CurrentLayerName[:stringPos]):
+            while string_pos <= MaxLength:
+                if str.isdigit(current_layer_name[:string_pos]):
                     # Store longest numeric string so far
-                    TempNumString = CurrentLayerName[:stringPos]
-                    stringPos = stringPos + 1
+                    temp_num_string = current_layer_name[:string_pos]
+                    string_pos = string_pos + 1
                 else:
                     break
 
-        self.plotCurrentLayer = False  # Temporarily assume that we aren't plotting the layer
-        if str.isdigit(TempNumString):
-            if self.svgLayer == int(float(TempNumString)):
-                self.plotCurrentLayer = True  # We get to plot the layer!
-                self.LayersPlotted += 1
+        # Temporarily assume that we aren't plotting the layer
+        self.plot_current_layer = False
+        if str.isdigit(temp_num_string):
+            if self.svg_layer == int(float(temp_num_string)):
+                self.plot_current_layer = True  # We get to plot the layer!
+                self.layers_plotted += 1
         # Note: this function is only called if we are NOT plotting all layers.
 
 # -----------------------------------------------------------------------------------------------------
 
-    def getLength(self, name, default):
+    def get_length(self, name, default):
 
         str = self.svg.get(name)
         if str:
-            v, u = parseLengthWithUnits(str)
+            v, u = parse_length_with_units(str)
             if not v:
                 # Couldn't parse the value
                 return None
@@ -847,18 +851,18 @@ class LUS(inkex.EffectExtension):
 
 # -----------------------------------------------------------------------------------------------------
 
-    def getDocProps(self):
+    def get_doc_properties(self):
 
-        self.svgHeight = self.getLength('height', N_PAGE_HEIGHT)
-        self.svgWidth = self.getLength('width', N_PAGE_WIDTH)
-        if (self.svgHeight is None) or (self.svgWidth is None):
+        self.svg_height = self.get_length('height', N_PAGE_HEIGHT)
+        self.svg_width = self.get_length('width', N_PAGE_WIDTH)
+        if (self.svg_height is None) or (self.svg_width is None):
             return False
 
         return True
 
 # -----------------------------------------------------------------------------------------------------
 
-    def plotPath(self, path, matTransform):
+    def plot_path(self, path, matTransform):
 
         # turn this path into a cubicsuperpath (list of beziers)...
 
@@ -878,7 +882,7 @@ class LUS(inkex.EffectExtension):
         # p is now a list of lists of cubic beziers [control pt1, control pt2, endpoint]
         # where the start-point is the last point in the previous segment.
         for sp in p:
-            subdivideCubicPath(sp, self.options.smoothness)
+            subdivide_cubic_path(sp, self.options.smoothness)
 
             nIndex = 0
             for csp in sp:
@@ -889,59 +893,59 @@ class LUS(inkex.EffectExtension):
                     # self.svgWidth/2  #( 2 * self.step_scaling_factor )
                     self.fPrevX = 0
                     # ( 2 * self.step_scaling_factor )
-                    self.fPrevY = self.svgHeight
+                    self.fPrevY = self.svg_height
                     self.ptFirst = (self.fPrevX, self.fPrevY)
 
-                if self.plotCurrentLayer:
-                    self.plotLine()
+                if self.plot_current_layer:
+                    self.plot_line()
                     self.fPrevX = self.fX
                     self.fPrevY = self.fY
                 # self.doCommand(str(nIndex ))
-                if self.plotCurrentLayer:
+                if self.plot_current_layer:
                     if nIndex == 0:
-                        self.penUp()
+                        self.pen_up()
                     elif nIndex == 1:
-                        self.penDown()
+                        self.pen_down()
                 nIndex += 1
 
 # -----------------------------------------------------------------------------------------------------
 
-    def penUp(self):
-        if not self.PenIsUp:
-            self.PenIsUp = True
+    def pen_up(self):
+        if not self.pen_is_up:
+            self.pen_is_up = True
             if self.LU:
                 # self.doCommand( 'G01 Z'+str(self.options.penUpPosition)) # for future needs
-                self.doCommand('G01 Z1000')  # for a while
+                self.do_command('G01 Z1000')  # for a while
                 time.sleep(self.options.penDelay)
 
 # -----------------------------------------------------------------------------------------------------
 
-    def penDown(self):
-        if self.PenIsUp:
-            self.PenIsUp = False
+    def pen_down(self):
+        if self.pen_is_up:
+            self.pen_is_up = False
             if self.LU:
                 # self.doCommand( 'G01 Z'+str(self.options.penDownPosition)) # for future needs
-                self.doCommand('G01 Z0')   # for a while
+                self.do_command('G01 Z0')   # for a while
                 time.sleep(self.options.penDelay)
 
 # -----------------------------------------------------------------------------------------------------
 
-    def plotLine(self):
+    def plot_line(self):
         if self.fPrevX is None:
             return
 
-        nDeltaX = self.fX - self.fPrevX
-        nDeltaY = self.fY - self.fPrevY
+        n_delta_x = self.fX - self.fPrevX
+        n_delta_y = self.fY - self.fPrevY
 
-        if self.distance(nDeltaX, nDeltaY) > 0:
-            self.nodeCount += 1
+        if self.distance(n_delta_x, n_delta_y) > 0:
+            self.node_count += 1
 
-            while ((abs(nDeltaX) > 0) or (abs(nDeltaY) > 0)):
-                xd = nDeltaX
-                yd = nDeltaY
+            while ((abs(n_delta_x) > 0) or (abs(n_delta_y) > 0)):
+                xd = n_delta_x
+                yd = n_delta_y
 
-                xt = self.svgTotalDeltaX
-                yt = -self.svgTotalDeltaY
+                xt = self.svg_total_delta_X
+                yt = -self.svg_total_delta_Y
 
                 if self.LU:  # to Lineus
                     # strOutput = ','.join( ['G01 X'+("%d" % xt)+' Y'+("%d" % yt)])
@@ -954,26 +958,26 @@ class LUS(inkex.EffectExtension):
                         strOutput = ','.join(['G01 Z1000'])
 
                 if self.GF:  # to Gcode file
-                    if not self.PenIsUp:
+                    if not self.pen_is_up:
                         strOutput = ','.join(
                             ['G01 X'+("%d" % xt)+' Y'+("%d" % yt)+' Z0'])
                     else:
                         strOutput = ','.join(
                             ['G01 X'+("%d" % xt)+' Y'+("%d" % yt)+' Z1000'])
-                        self.doCommand(strOutput)
+                        self.do_command(strOutput)
                         strOutput = ','.join(
                             ['G01 X'+("%d" % xt)+' Y'+("%d" % yt)+' Z0'])
-                self.doCommand(strOutput)
+                self.do_command(strOutput)
 
-                self.svgTotalDeltaX += xd
-                self.svgTotalDeltaY += yd
+                self.svg_total_delta_X += xd
+                self.svg_total_delta_Y += yd
 
-                nDeltaX -= xd
-                nDeltaY -= yd
+                n_delta_x -= xd
+                n_delta_y -= yd
 
 # -----------------------------------------------------------------------------------------------------
 
-    def doCommand(self, cmd):
+    def do_command(self, cmd):
 
         if self.LU:  # to Line-us
             # cmd += b'\x00'
@@ -1002,20 +1006,34 @@ class LUS(inkex.EffectExtension):
 
 # -----------------------------------------------------------------------------------------------------
 
-    def doRequest(self):
+    # def doRequest(self):
+    #     line = 'Not connected'
+    #     if self.connected:
+    #         self._sock.send(b'Hello')
+    #         line = self.get_resp()
+    #     return line
+
+    def get_hello_info(self):
         line = 'Not connected'
+        hello = {}
         if self.connected:
-            self._sock.send('Hello')
-            line = self.get_resp()
-        return line
+            self._sock.send(b'')
+            line = shlex.split(self.get_resp())
+            if line.pop(0) != 'hello':
+                return None
+            for field in line:
+                split_fields = field.split(':', 1)
+                hello[split_fields[0]] = split_fields[1]
+            hello_msg = f"Version: {hello['VERSION']}\nSerial: {hello['SERIAL']}."
+            return hello_msg
+        else:
+            return line
 
 # -----------------------------------------------------------------------------------------------------
 
     def connect(self):
         try:
             self._sock.connect(('line-us.local', 1337))  # Common
-            # self._sock.connect(('192.168.43.156', 1337))	# Yulya
-            # self._sock.connect(('10.10.100.254', 1337))	# longtolik
             inkex.errormsg('Connected')
             self.connected = True
         except ConnectionError as connerr:
