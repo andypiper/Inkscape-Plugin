@@ -10,6 +10,7 @@ From the original documentation for the extension:
 
 TODO: add installation instructions
 TODO: add usage instructions
+
 ## Useful links
 
 - [fork with some compatibility updates](https://github.com/amyszczepanski/Inkscape-Plugin)
