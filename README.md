@@ -6,7 +6,7 @@ This is a significantly modified version of the [older Inkscape extension for Li
 
 From the original documentation for the extension:
 
-> The plugin uses machine co-ordinates and does not do any scaling, so refer to the [drawing space diagram](https://github.com/Line-us/Line-us-Programming/blob/master/Documentation/GCodeSpec.pdf) for details. Note that the Inkscape document units must be set to pixels (File/Document Properties/Custom Size/Units). For reference, a sample drawing is [included here.](./LineUsTestDrawing.svg)
+> The plugin uses machine co-ordinates and does not do any scaling, so refer to the [drawing space diagram](https://github.com/Line-us/Line-us-Programming/blob/master/Documentation/LineUsDrawingArea.pdf) for details. Note that the Inkscape document units must be set to pixels (File/Document Properties/Custom Size/Units). For reference, a sample drawing is [included here.](./LineUsTestDrawing.svg)
 
 > [!IMPORTANT]
 > TODO: add installation instructions
